@@ -39,6 +39,11 @@ const api = {
   openPdf: (pdfPath: string) => ipcRenderer.invoke("certs:openPdf", pdfPath),
   openFolder: (dir: string) => ipcRenderer.invoke("certs:openFolder", dir),
 
+  markSent: (rec: { studentName: string; major: string; level: number | string; certNo: string }) =>
+    ipcRenderer.invoke("dist:markSent", rec),
+  listDist: () => ipcRenderer.invoke("dist:list"),
+  exportDist: () => ipcRenderer.invoke("dist:export"),
+
   exportSummary: (rows: unknown[]) => ipcRenderer.invoke("export:summary", rows),
 
   onQueueEvent: (cb: (ev: QueueEventPayload) => void) => {

@@ -220,6 +220,69 @@ ipcMain.handle("certs:openFolder", (_e, dir: string) => {
   return { ok: true };
 });
 
+// ---------- 分发记录 ----------
+// 记录"哪张证书何时发给了谁的家长",存于输出目录 distributions.json
+
+interface DistRecord {
+  ts: string;
+  studentName: string;
+  major: string;
+  level: number | string;
+  certNo: string;
+}
+
+function distFile(): string {
+  return path.join(outRootDir(), "distributions.json");
+}
+
+function readDist(): DistRecord[] {
+  try {
+    return JSON.parse(fs.readFileSync(distFile(), "utf-8")) as DistRecord[];
+  } catch {
+    return [];
+  }
+}
+
+ipcMain.handle("dist:markSent", (_e, rec: Omit<DistRecord, "ts">) => {
+  if (!outRootDir()) return { ok: false, error: "未设置输出目录" };
+  const all = readDist();
+  if (!all.some((r) => r.certNo === rec.certNo)) {
+    all.push({ ...rec, ts: new Date().toISOString() });
+    fs.writeFileSync(distFile(), JSON.stringify(all, null, 2), "utf-8");
+  }
+  return { ok: true };
+});
+
+ipcMain.handle("dist:list", () => readDist());
+
+ipcMain.handle("dist:export", async () => {
+  const all = readDist();
+  if (all.length === 0) {
+    return { ok: false, error: "暂无分发记录:在证书图墙右键「标记为已发送」后即会记录" };
+  }
+  const r = await dialog.showSaveDialog(win!, {
+    title: "导出分发记录",
+    defaultPath: "分发记录.xlsx",
+    filters: [{ name: "Excel", extensions: ["xlsx"] }],
+  });
+  if (r.canceled || !r.filePath) return { ok: false };
+  const wb = new (await import("exceljs")).Workbook();
+  const ws = wb.addWorksheet("分发记录");
+  ws.columns = [
+    { header: "发送时间", key: "ts", width: 22 },
+    { header: "学生", key: "studentName", width: 14 },
+    { header: "专业", key: "major", width: 16 },
+    { header: "级别", key: "level", width: 8 },
+    { header: "证书编号", key: "certNo", width: 24 },
+  ];
+  for (const rec of all) {
+    ws.addRow({ ...rec, ts: rec.ts.replace("T", " ").slice(0, 19) });
+  }
+  ws.getRow(1).font = { bold: true };
+  await wb.xlsx.writeFile(r.filePath);
+  return { ok: true, path: r.filePath, count: all.length };
+});
+
 ipcMain.handle("export:summary", async (_e, rows: ExportRow[]) => {
   const r = await dialog.showSaveDialog(win!, {
     title: "导出证书汇总",

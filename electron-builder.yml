@@ -2,17 +2,31 @@
   "appId": "com.certstudio.app",
   "productName": "Cert Studio",
   "directories": {
-    "output": "release"
+    "output": "release",
+    "buildResources": "build"
   },
   "files": [
     "dist/**/*",
     "dist-electron/**/*"
   ],
   "win": {
-    "target": ["portable"],
-    "artifactName": "CertStudio-${version}-win.exe"
+    "icon": "build/icon.ico",
+    "target": [
+      { "target": "portable", "arch": ["x64", "arm64"] }
+    ]
   },
-  "nsis": {
-    "oneClick": true
+  "mac": {
+    "icon": "build/icon.png",
+    "category": "public.app-category.education",
+    "target": [
+      { "target": "dmg", "arch": ["x64", "arm64"] }
+    ]
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "category": "Education",
+    "target": [
+      { "target": "AppImage", "arch": ["x64", "arm64"] }
+    ]
   }
 }
