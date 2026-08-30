@@ -34,11 +34,15 @@ jobs:
 
       - name: Build macOS (x64 + arm64 dmg)
         if: matrix.os == 'macos-latest'
-        run: npx electron-builder --mac --x64 --arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --mac --x64 --arm64 --publish never
 
       - name: Build Linux (x64 + arm64 AppImage)
         if: matrix.os == 'ubuntu-latest'
-        run: npx electron-builder --linux --x64 --arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --linux --x64 --arm64 --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
