@@ -79,7 +79,7 @@ ipcMain.handle("roster:import", async () => {
   });
   if (r.canceled || !r.filePaths[0]) return null;
   const parsed = await parseRoster(r.filePaths[0]);
-  lastRoster = parsed.students;
+  roster = parsed.students;
   return { path: r.filePaths[0], ...parsed };
 });
 
@@ -94,23 +94,85 @@ ipcMain.handle("roster:downloadTemplate", async () => {
   return r.filePath;
 });
 
-// 上次导入的名册(内存态,启动批量用)
-let lastRoster: { name: string; idCard: string; certNo?: string; examNo?: string }[] = [];
+// 名册管理(内存态):导入与手动添加统一存放,可增删
+let roster: { name: string; idCard: string; certNo?: string; examNo?: string }[] = [];
+
+type RosterEntry = { name: string; idCard: string; certNo?: string; examNo?: string };
+
+ipcMain.handle("roster:get", () => roster);
+
+ipcMain.handle("roster:add", (_e, entry: RosterEntry) => {
+  const name = (entry.name || "").trim();
+  const idCard = (entry.idCard || "").trim();
+  if (!name || !idCard) {
+    return { ok: false, error: "姓名与身份证号必填", roster };
+  }
+  if (!roster.some((s) => s.name === name && s.idCard === idCard)) {
+    roster = [
+      ...roster,
+      {
+        name,
+        idCard,
+        certNo: entry.certNo?.trim() || undefined,
+        examNo: entry.examNo?.trim() || undefined,
+      },
+    ];
+  }
+  return { ok: true, roster };
+});
+
+ipcMain.handle("roster:remove", (_e, index: number) => {
+  roster = roster.filter((_, i) => i !== index);
+  return { ok: true, roster };
+});
+
+ipcMain.handle("roster:clear", () => {
+  roster = [];
+  return { ok: true, roster };
+});
 
 ipcMain.handle("queue:startFromRoster", () => {
   if (!outRootDir()) {
     return { ok: false, error: "请先在「设置」页选择输出目录" };
   }
-  if (lastRoster.length === 0) {
-    return { ok: false, error: "请先在「名册」页导入学生名单" };
+  if (roster.length === 0) {
+    return { ok: false, error: "名册为空:请导入或手动添加学生" };
+  }
+  if (queue?.isRunning) {
+    return { ok: false, error: "已有查询任务在运行" };
   }
   setOutRoot(outRootDir());
   queue = new CertQueue(win!);
-  void queue.enqueue(lastRoster);
+  void queue.enqueue(roster);
   return { ok: true };
 });
 
-ipcMain.handle("queue:start", (_e, students: { name: string; idCard: string; certNo?: string; examNo?: string }[]) => {
+ipcMain.handle("queue:startSingle", (_e, student: RosterEntry) => {
+  if (!outRootDir()) {
+    return { ok: false, error: "请先在「设置」页选择输出目录" };
+  }
+  if (queue?.isRunning) {
+    return { ok: false, error: "已有查询任务在运行,请等其结束后再试" };
+  }
+  const name = (student.name || "").trim();
+  const idCard = (student.idCard || "").trim();
+  if (!name || !idCard) {
+    return { ok: false, error: "姓名与身份证号必填" };
+  }
+  setOutRoot(outRootDir());
+  queue = new CertQueue(win!);
+  void queue.enqueue([
+    {
+      name,
+      idCard,
+      certNo: student.certNo?.trim() || undefined,
+      examNo: student.examNo?.trim() || undefined,
+    },
+  ]);
+  return { ok: true };
+});
+
+ipcMain.handle("queue:start", (_e, students: RosterEntry[]) => {
   if (!outRootDir()) {
     return { ok: false, error: "请先设置输出目录" };
   }

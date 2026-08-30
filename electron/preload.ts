@@ -16,9 +16,16 @@ const api = {
   chooseOutRoot: () => ipcRenderer.invoke("settings:chooseOutRoot"),
 
   importRoster: () => ipcRenderer.invoke("roster:import"),
+  getRoster: () => ipcRenderer.invoke("roster:get"),
+  addRosterEntry: (entry: { name: string; idCard: string; certNo?: string; examNo?: string }) =>
+    ipcRenderer.invoke("roster:add", entry),
+  removeRosterEntry: (index: number) => ipcRenderer.invoke("roster:remove", index),
+  clearRoster: () => ipcRenderer.invoke("roster:clear"),
   downloadTemplate: () => ipcRenderer.invoke("roster:downloadTemplate"),
 
   startQueueFromRoster: () => ipcRenderer.invoke("queue:startFromRoster"),
+  startQueueSingle: (student: { name: string; idCard: string; certNo?: string; examNo?: string }) =>
+    ipcRenderer.invoke("queue:startSingle", student),
   startQueue: (
     students: { name: string; idCard: string; certNo?: string; examNo?: string }[]
   ) => ipcRenderer.invoke("queue:start", students),
