@@ -1,9 +1,16 @@
 /**
- * 证书图墙:网格展示预览图。
- * 右键:复制图片 / 打开 PDF / 标记为已发送 / 打开所在文件夹。
- * 左键:打开 PDF。已发送的证书显示角标,防止重复/漏发。
+ * 证书图墙:网格展示证书预览图。
+ *
+ * 交互:
+ * - 单击卡片 = 复制图片(主流程:复制后切微信 Ctrl+V 发送)
+ * - 卡片下方小按钮:打开 PDF / 标记已发送 / 打开文件夹
+ * - 右键 = 完整菜单(复制图片 / 打开 PDF / 标记为已发送 / 打开所在文件夹)
+ *
+ * 显示原理:渲染层是 http 页面,不能直接 <img src="C:/...">,
+ * 预览图经 IPC 读文件转 data URL 显示;学生目录里的 PNG 文件本身保留
+ * (微信分发用的是实体文件,不是这里的预览)。
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface StoredCert {
   dir: string;
@@ -29,29 +36,47 @@ interface DistRecord {
 
 export default function CertWallView() {
   const [certs, setCerts] = useState<StoredCert[]>([]);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState("");
 
-  const refresh = async () => {
-    setCerts((await window.api.scanCerts()) as StoredCert[]);
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2200);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const list = (await window.api.scanCerts()) as StoredCert[];
+    setCerts(list);
     const dist = (await window.api.listDist()) as DistRecord[];
     setSent(new Set(dist.map((d) => d.certNo)));
-  };
+
+    // 批量读预览图(data URL),已缓存的跳过
+    const next: Record<string, string> = {};
+    await Promise.all(
+      list.map(async (c) => {
+        if (previews[c.pngPath]) {
+          next[c.pngPath] = previews[c.pngPath];
+          return;
+        }
+        const r = (await window.api.readImage(c.pngPath)) as {
+          ok: boolean;
+          dataUrl?: string;
+        };
+        if (r.ok && r.dataUrl) next[c.pngPath] = r.dataUrl;
+      })
+    );
+    setPreviews(next);
+  }, [previews]);
 
   useEffect(() => {
     void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(""), 1800);
-  };
 
   const copyImage = async (c: StoredCert) => {
     const r = (await window.api.copyImage(c.pngPath)) as { ok: boolean; error?: string };
-    showToast(
-      r.ok ? "已复制图片,可到微信直接 Ctrl+V 粘贴发送" : (r.error ?? "复制失败")
-    );
+    showToast(r.ok ? `已复制「${c.studentName} ${c.record.major_name}」图片,切到微信 Ctrl+V 发送` : (r.error ?? "复制失败"));
   };
 
   const openPdf = async (c: StoredCert) => {
@@ -95,7 +120,7 @@ export default function CertWallView() {
       <div className="card">
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span className="muted">
-            右键证书:复制图片 / 打开 PDF / 标记为已发送。复制后切到微信聊天窗口 Ctrl+V 即可发送。
+            <b>单击证书 = 复制图片</b>,切到微信聊天窗口 Ctrl+V 即可发送;右键有更多操作。
           </span>
           <div className="row">
             <button className="btn ghost" onClick={exportDist}>
@@ -116,38 +141,32 @@ export default function CertWallView() {
             <div
               key={c.record.cert_no || c.pdfPath}
               className="wall-item"
+              onClick={() => copyImage(c)}
               onContextMenu={(e) => {
+                // 阻止冒泡,否则 window 级关闭监听会立刻把菜单关掉
                 e.preventDefault();
-                showContextMenu([
-                  { label: "复制图片", fn: () => copyImage(c) },
-                  { label: "打开 PDF", fn: () => openPdf(c) },
-                  {
-                    label: sent.has(c.record.cert_no) ? "取消发送标记(调试)" : "标记为已发送",
-                    fn: () => markSent(c),
-                  },
-                  { label: "打开所在文件夹", fn: () => openFolder(c) },
-                ]);
+                e.stopPropagation();
+                showContextMenu(
+                  [
+                    { label: "复制图片", fn: () => copyImage(c) },
+                    { label: "打开 PDF", fn: () => openPdf(c) },
+                    { label: "标记为已发送", fn: () => markSent(c) },
+                    { label: "打开所在文件夹", fn: () => openFolder(c) },
+                  ],
+                  e.clientX,
+                  e.clientY
+                );
               }}
-              onClick={() => openPdf(c)}
-              title="左键:打开 PDF · 右键:复制图片"
+              title="单击:复制图片(微信 Ctrl+V 发送) · 右键:更多操作"
             >
               <div style={{ position: "relative" }}>
-                <img src={c.pngPath} alt={`${c.studentName} ${c.record.major_name}`} />
+                {previews[c.pngPath] ? (
+                  <img src={previews[c.pngPath]} alt={`${c.studentName} ${c.record.major_name}`} />
+                ) : (
+                  <div className="wall-placeholder">加载中…</div>
+                )}
                 {sent.has(c.record.cert_no) && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 8,
-                      right: 8,
-                      background: "var(--ok)",
-                      color: "#fff",
-                      borderRadius: 10,
-                      padding: "2px 10px",
-                      fontSize: 12,
-                    }}
-                  >
-                    已发送
-                  </div>
+                  <div className="sent-badge">已发送</div>
                 )}
               </div>
               <div className="meta">
@@ -156,6 +175,26 @@ export default function CertWallView() {
                   {c.record.is_excellent === 2 ? "(优秀)" : ""}
                 </div>
                 <div className="s">发证 {c.record.made_cert_ymd}</div>
+                <div className="row mt8" style={{ gap: 6 }}>
+                  <button
+                    className="btn ghost mini"
+                    onClick={(e) => { e.stopPropagation(); openPdf(c); }}
+                  >
+                    PDF
+                  </button>
+                  <button
+                    className="btn ghost mini"
+                    onClick={(e) => { e.stopPropagation(); markSent(c); }}
+                  >
+                    {sent.has(c.record.cert_no) ? "重标发送" : "标记发送"}
+                  </button>
+                  <button
+                    className="btn ghost mini"
+                    onClick={(e) => { e.stopPropagation(); openFolder(c); }}
+                  >
+                    文件夹
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -165,8 +204,12 @@ export default function CertWallView() {
   );
 }
 
-/** 简易右键菜单(Electron 环境原生菜单经主进程成本高,用 DOM 菜单足够) */
-function showContextMenu(menu: { label: string; fn: () => void }[]) {
+/** 右键菜单(位置由调用处事件坐标决定;菜单建好后下一帧才挂关闭监听,避免自关闭) */
+function showContextMenu(
+  menu: { label: string; fn: () => void }[],
+  x: number,
+  y: number
+) {
   const existing = document.getElementById("ctx-menu");
   if (existing) existing.remove();
   const el = document.createElement("div");
@@ -179,7 +222,7 @@ function showContextMenu(menu: { label: string; fn: () => void }[]) {
     "border-radius:8px",
     "box-shadow:0 4px 16px rgba(0,0,0,.1)",
     "padding:4px",
-    "min-width:140px",
+    "min-width:150px",
   ].join(";");
   for (const item of menu) {
     const opt = document.createElement("div");
@@ -188,22 +231,29 @@ function showContextMenu(menu: { label: string; fn: () => void }[]) {
       "padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px";
     opt.onmouseenter = () => (opt.style.background = "#e8f3ff");
     opt.onmouseleave = () => (opt.style.background = "transparent");
-    opt.onclick = () => {
+    opt.onclick = (e) => {
+      e.stopPropagation();
       item.fn();
       el.remove();
+      cleanup();
     };
     el.appendChild(opt);
   }
-  const place = (x: number, y: number) => {
-    el.style.left = `${Math.min(x, window.innerWidth - 160)}px`;
-    el.style.top = `${Math.min(y, window.innerHeight - 130)}px`;
-  };
+  el.style.left = `${Math.min(x, window.innerWidth - 165)}px`;
+  el.style.top = `${Math.min(y, window.innerHeight - 160)}px`;
   document.body.appendChild(el);
-  const close = () => {
+
+  const onOutside = () => {
     el.remove();
-    window.removeEventListener("click", close);
-    window.removeEventListener("contextmenu", close);
+    cleanup();
   };
-  window.addEventListener("click", close);
-  window.addEventListener("contextmenu", close);
+  const cleanup = () => {
+    window.removeEventListener("click", onOutside);
+    window.removeEventListener("contextmenu", onOutside);
+  };
+  // 下一帧再监听,防止触发本菜单的那次 contextmenu/click 事件立即关掉它
+  setTimeout(() => {
+    window.addEventListener("click", onOutside);
+    window.addEventListener("contextmenu", onOutside);
+  }, 0);
 }

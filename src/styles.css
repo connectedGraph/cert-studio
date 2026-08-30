@@ -212,6 +212,33 @@ table.tbl th {
   display: block;
   aspect-ratio: 1 / 1;
   object-fit: cover;
+  background: #fdf9ef;
+}
+
+.wall-placeholder {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: #f7f8fa;
+}
+
+.sent-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--ok);
+  color: #fff;
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.btn.mini {
+  padding: 3px 10px;
+  font-size: 12px;
+  border-width: 1px;
 }
 
 .wall-item .meta {

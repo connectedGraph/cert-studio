@@ -215,6 +215,18 @@ ipcMain.handle("certs:openPdf", (_e, pdfPath: string) => {
   return { ok: true };
 });
 
+// 渲染层(http 页面)无法直接 <img src="C:/...">,经 IPC 读本地图片转 data URL
+ipcMain.handle("certs:readImage", (_e, pngPath: string) => {
+  try {
+    if (!fs.existsSync(pngPath)) return { ok: false, error: "图片不存在" };
+    const buf = fs.readFileSync(pngPath);
+    const mime = path.extname(pngPath).toLowerCase() === ".jpg" ? "image/jpeg" : "image/png";
+    return { ok: true, dataUrl: `data:${mime};base64,${buf.toString("base64")}` };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+});
+
 ipcMain.handle("certs:openFolder", (_e, dir: string) => {
   void shell.openPath(dir);
   return { ok: true };

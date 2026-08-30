@@ -35,6 +35,7 @@ const api = {
   resolveCaptcha: () => ipcRenderer.invoke("captcha:resolved"),
 
   scanCerts: () => ipcRenderer.invoke("certs:scan"),
+  readImage: (pngPath: string) => ipcRenderer.invoke("certs:readImage", pngPath),
   copyImage: (pngPath: string) => ipcRenderer.invoke("certs:copyImage", pngPath),
   openPdf: (pdfPath: string) => ipcRenderer.invoke("certs:openPdf", pdfPath),
   openFolder: (dir: string) => ipcRenderer.invoke("certs:openFolder", dir),
