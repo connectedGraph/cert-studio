@@ -153,7 +153,30 @@ export class CertQueue {
   }
 
   private async runStudent(task: StudentTask): Promise<void> {
-    const { name, idCard, certNo, examNo } = task.student;
+    const { certNo, examNo } = task.student;
+    const name = task.student.name.trim();
+    const idCard = task.student.idCard.trim();
+
+    // 提交前参数校验:拦截剪贴板/输入法污染(曾出现身份证号被自动粘贴粘上聊天文本,
+    // 服务端 error:0 但 data:[] 静默空结果)
+    if (!/^[一-龥·]{1,20}$/.test(name)) {
+      task.status = "failed";
+      task.message = "姓名含异常字符,请检查名册数据";
+      this.update(task);
+      return;
+    }
+    if (idCard && !/^\d{17}[\dXx]$/.test(idCard)) {
+      task.status = "failed";
+      task.message = `身份证号格式异常(应为 18 位,实际 ${idCard.length} 字符):${idCard.slice(0, 8)}…`;
+      this.update(task);
+      return;
+    }
+    if (certNo && !/^\d{10,20}$/.test(certNo)) {
+      task.status = "failed";
+      task.message = "证书编号格式异常,请检查名册数据";
+      this.update(task);
+      return;
+    }
 
     let lastMsg = "";
     for (let attempt = 1; attempt <= SEARCH_RETRIES; attempt++) {
@@ -201,6 +224,13 @@ export class CertQueue {
       });
 
       if (result.error === 0 && result.data) {
+        if (result.data.length === 0) {
+          // 官方对"无匹配"静默返回空集;结合校验已过,大概率是服务端无此记录
+          task.status = "done";
+          task.message = "查询成功但无匹配记录(0 条):请核对该学生的姓名与证件号是否与报名信息一致";
+          this.update(task);
+          return;
+        }
         await this.fetchPdfs(task, result);
         return;
       }
